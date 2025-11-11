@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>YOLO Live Detection</title>
+    <style>
+        video, canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <video id="video" width="640" height="480" autoplay muted></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Access webcam
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => { console.error("Webcam error:", err); });
+
+        async function detectFrame() {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(async function(blob) {
+                const formData = new FormData();
+                formData.append('image', blob, 'frame.jpg');
+
+                try {
+                    const response = await fetch('/detect', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const detections = await response.json();
+
+                    // Clear previous drawings
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    // Draw bounding boxes
+                    detections.forEach(det => {
+                        let x1 = det.box[0] * canvas.width;
+                        let y1 = det.box[1] * canvas.height;
+                        let x2 = det.box[2] * canvas.width;
+                        let y2 = det.box[3] * canvas.height;
+
+                        ctx.strokeStyle = 'lime';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                        ctx.font = "16px Arial";
+                        ctx.fillStyle = "lime";
+                        ctx.fillText(`${det.class} ${det.confidence.toFixed(2)}`, x1, y1-5);
+                    });
+
+                } catch (err) {
+                    console.error(err);
+                }
+
+                // Process next frame
+                setTimeout(detectFrame, 100);  // adjust interval for speed
+            }, 'image/jpeg');
+        }
+
+        video.addEventListener('play', () => {
+            detectFrame();
+        });
+    </script>
+</body>
+</html>
